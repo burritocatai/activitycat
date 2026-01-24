@@ -15,15 +15,17 @@ import (
 type Model struct {
 	viewport viewport.Model
 	prs      []github.PullRequest
+	issues   []github.Issue
 	width    int
 	height   int
 	ready    bool
 }
 
 // New creates a new PR list model
-func New(prs []github.PullRequest, width, height int) Model {
+func New(prs []github.PullRequest, issues []github.Issue, width, height int) Model {
 	m := Model{
 		prs:    prs,
+		issues: issues,
 		width:  width,
 		height: height,
 		ready:  false,
@@ -88,7 +90,7 @@ func (m Model) View() string {
 		return "\n  Initializing..."
 	}
 
-	header := styles.TitleStyle.Render(fmt.Sprintf("Found %d Pull Requests", len(m.prs)))
+	header := styles.TitleStyle.Render(fmt.Sprintf("Found %d Pull Requests and %d Closed Issues", len(m.prs), len(m.issues)))
 	footer := styles.FooterStyle.Render("↑/↓: Scroll • Enter: Continue • b: Back • q: Quit")
 
 	return lipgloss.JoinVertical(
@@ -99,17 +101,35 @@ func (m Model) View() string {
 	)
 }
 
-// renderContent formats all PRs for display
+// renderContent formats all PRs and issues for display
 func (m Model) renderContent() string {
-	if len(m.prs) == 0 {
-		return styles.SubtleStyle.Render("No pull requests found in this date range.")
+	if len(m.prs) == 0 && len(m.issues) == 0 {
+		return styles.SubtleStyle.Render("No pull requests or closed issues found in this date range.")
 	}
 
 	var content strings.Builder
 
-	for _, pr := range m.prs {
-		content.WriteString(m.formatPR(pr))
-		content.WriteString("\n")
+	// Display PRs first
+	if len(m.prs) > 0 {
+		content.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4")).Render("Pull Requests"))
+		content.WriteString("\n\n")
+		for _, pr := range m.prs {
+			content.WriteString(m.formatPR(pr))
+			content.WriteString("\n")
+		}
+	}
+
+	// Display issues after PRs
+	if len(m.issues) > 0 {
+		if len(m.prs) > 0 {
+			content.WriteString("\n")
+		}
+		content.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2")).Render("Closed Issues"))
+		content.WriteString("\n\n")
+		for _, issue := range m.issues {
+			content.WriteString(m.formatIssue(issue))
+			content.WriteString("\n")
+		}
 	}
 
 	return content.String()
@@ -174,6 +194,57 @@ func (m Model) formatPR(pr github.PullRequest) string {
 	if reviewers != "" {
 		card.WriteString(fmt.Sprintf("%s\n", reviewers))
 	}
+	if body != "" {
+		card.WriteString(fmt.Sprintf("\n%s\n", body))
+	}
+
+	return styles.PRCardStyle.Render(card.String())
+}
+
+// formatIssue formats a single issue as a card
+func (m Model) formatIssue(issue github.Issue) string {
+	// Title with state color
+	var stateStyle lipgloss.Style
+	var stateLabel string
+
+	if issue.IsOpen() {
+		stateStyle = styles.OpenStyle
+		stateLabel = "OPEN"
+	} else {
+		stateStyle = styles.ClosedStyle
+		stateLabel = "CLOSED"
+	}
+
+	title := lipgloss.NewStyle().Bold(true).Render(issue.Title)
+	state := stateStyle.Render(fmt.Sprintf("[%s]", stateLabel))
+
+	// Repository and author
+	repo := styles.SubtleStyle.Render(issue.Repository.NameWithOwner)
+	author := styles.SubtleStyle.Render(fmt.Sprintf("@%s", issue.Author.Login))
+
+	// Dates
+	dates := fmt.Sprintf("Created: %s", issue.CreatedAt.Format("2006-01-02"))
+	if issue.ClosedAt != nil {
+		dates += fmt.Sprintf(" • Closed: %s", issue.ClosedAt.Format("2006-01-02"))
+	}
+
+	// Body (truncated)
+	body := ""
+	if issue.Body != "" {
+		truncated := issue.Body
+		if len(truncated) > 200 {
+			truncated = truncated[:200] + "..."
+		}
+		// Remove newlines for compact display
+		truncated = strings.ReplaceAll(truncated, "\n", " ")
+		body = styles.SubtleStyle.Render(truncated)
+	}
+
+	// Build card content
+	var card strings.Builder
+	card.WriteString(fmt.Sprintf("%s %s\n", title, state))
+	card.WriteString(fmt.Sprintf("%s • %s\n", repo, author))
+	card.WriteString(fmt.Sprintf("%s\n", dates))
 	if body != "" {
 		card.WriteString(fmt.Sprintf("\n%s\n", body))
 	}

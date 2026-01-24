@@ -19,8 +19,8 @@ func CheckAPIKey() error {
 	return nil
 }
 
-// GenerateReport calls the Claude API to generate a report from PR data
-func GenerateReport(ctx context.Context, prs []github.PullRequest, prompt string) (string, error) {
+// GenerateReport calls the Claude API to generate a report from PR and issue data
+func GenerateReport(ctx context.Context, prs []github.PullRequest, issues []github.Issue, prompt string) (string, error) {
 	// Check for API key
 	if err := CheckAPIKey(); err != nil {
 		return "", err
@@ -29,11 +29,11 @@ func GenerateReport(ctx context.Context, prs []github.PullRequest, prompt string
 	// Create client (will automatically use ANTHROPIC_API_KEY from environment)
 	client := anthropic.NewClient()
 
-	// Format PR data
-	prData := github.FormatPRsForClaude(prs)
+	// Format PR and issue data
+	activityData := github.FormatActivityForClaude(prs, issues)
 
 	// Build the message
-	userMessage := fmt.Sprintf("%s\n\nHere is my GitHub PR activity data:\n\n%s", prompt, prData)
+	userMessage := fmt.Sprintf("%s\n\nHere is my GitHub activity data:\n\n%s", prompt, activityData)
 
 	// Call the API
 	message, err := client.Messages.New(ctx, anthropic.MessageNewParams{
@@ -60,9 +60,9 @@ func GenerateReport(ctx context.Context, prs []github.PullRequest, prompt string
 }
 
 // GenerateReportCmd wraps GenerateReport in a Bubbletea Cmd
-func GenerateReportCmd(prs []github.PullRequest, prompt string) tea.Cmd {
+func GenerateReportCmd(prs []github.PullRequest, issues []github.Issue, prompt string) tea.Cmd {
 	return func() tea.Msg {
-		report, err := GenerateReport(context.Background(), prs, prompt)
+		report, err := GenerateReport(context.Background(), prs, issues, prompt)
 		return ReportGeneratedMsg{
 			Report: report,
 			Error:  err,
