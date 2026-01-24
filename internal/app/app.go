@@ -41,12 +41,13 @@ type Model struct {
 	reportView   report.Model
 
 	// Shared data
-	selectedRange daterange.Range
-	prs           []github.PullRequest
-	prompts       []config.Prompt
-	selectedPrompt config.Prompt
+	selectedRange   daterange.Range
+	prs             []github.PullRequest
+	issues          []github.Issue
+	prompts         []config.Prompt
+	selectedPrompt  config.Prompt
 	generatedReport string
-	err           error
+	err             error
 }
 
 // New creates a new application model
@@ -90,7 +91,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dateselect.DateSelectedMsg:
 		// Transition from date selection to loading
 		m.selectedRange = msg.Range
-		m.loading = loading.New("Fetching pull requests...")
+		m.loading = loading.New("Fetching pull requests and closed issues...")
 		m.state = StateLoading
 		return m, tea.Batch(
 			m.loading.Init(),
@@ -105,7 +106,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.prs = msg.PRs
-		m.prList = prlist.New(m.prs, m.width, m.height)
+		m.issues = msg.Issues
+		m.prList = prlist.New(m.prs, m.issues, m.width, m.height)
 		m.state = StatePRList
 		return m, nil
 
@@ -127,7 +129,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = StateGenerating
 		return m, tea.Batch(
 			m.loading.Init(),
-			claude.GenerateReportCmd(m.prs, m.selectedPrompt.Content),
+			claude.GenerateReportCmd(m.prs, m.issues, m.selectedPrompt.Content),
 		)
 
 	case promptselect.BackMsg:

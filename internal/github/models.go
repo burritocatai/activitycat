@@ -58,3 +58,25 @@ func (pr PullRequest) Reviewers() []string {
 	}
 	return reviewers
 }
+
+// Issue represents a GitHub issue
+type Issue struct {
+	Number     int        `json:"number"`
+	Title      string     `json:"title"`
+	State      string     `json:"state"` // open, closed
+	Body       string     `json:"body"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	ClosedAt   *time.Time `json:"closedAt,omitempty"`
+	Author     Author     `json:"author"`
+	Repository Repository `json:"repository"`
+}
+
+// IsOpen returns true if the issue is open
+func (i Issue) IsOpen() bool {
+	return i.State == "open"
+}
+
+// IsClosed returns true if the issue is closed
+func (i Issue) IsClosed() bool {
+	return i.State == "closed"
+}
