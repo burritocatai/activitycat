@@ -1,6 +1,7 @@
 package daterange
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -35,6 +36,27 @@ func Last3Months() Range {
 		Start: now.AddDate(0, 0, -90),
 		End:   now,
 	}
+}
+
+// Parse parses a date string in YYYY-MM-DD format
+func Parse(s string) (time.Time, error) {
+	return time.Parse("2006-01-02", s)
+}
+
+// Custom creates a Range from two date strings in YYYY-MM-DD format
+func Custom(startStr, endStr string) (Range, error) {
+	start, err := Parse(startStr)
+	if err != nil {
+		return Range{}, fmt.Errorf("invalid start date: %w", err)
+	}
+	end, err := Parse(endStr)
+	if err != nil {
+		return Range{}, fmt.Errorf("invalid end date: %w", err)
+	}
+	if end.Before(start) {
+		return Range{}, fmt.Errorf("end date must not be before start date")
+	}
+	return Range{Start: start, End: end}, nil
 }
 
 // GitHubQueryString formats the range for GitHub search queries
