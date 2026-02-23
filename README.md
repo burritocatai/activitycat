@@ -1,12 +1,12 @@
 # activitycat 🐱
 
-A beautiful terminal UI application that fetches your GitHub PR activity and generates AI-powered monthly reports using Claude.
+A beautiful terminal UI application that fetches your GitHub PR activity and generates AI-powered monthly reports using Claude or Ollama.
 
 ## Features
 
 - 📊 **Interactive TUI** - Built with [Bubbletea](https://github.com/charmbracelet/bubbletea) for a smooth terminal experience
 - 🔍 **GitHub Integration** - Fetches your PRs using the GitHub CLI (`gh`)
-- 🤖 **AI-Powered Reports** - Generates insightful reports with Claude AI
+- 🤖 **AI-Powered Reports** - Generates insightful reports with Claude AI or local Ollama models
 - 📅 **Flexible Date Ranges** - Last Week, Last Month, or Last 3 Months
 - 🎨 **Beautiful Display** - Color-coded PR states and scrollable views
 - ⚙️ **Custom Prompts** - Define your own report templates
@@ -22,10 +22,12 @@ A beautiful terminal UI application that fetches your GitHub PR activity and gen
    gh auth login
    ```
 
-2. **Anthropic API Key** - Get one from [console.anthropic.com](https://console.anthropic.com/):
+2. **Anthropic API Key** (only if using Claude) - Get one from [console.anthropic.com](https://console.anthropic.com/):
    ```bash
    export ANTHROPIC_API_KEY=your_key_here
    ```
+
+3. **Ollama** (optional) - Install from [ollama.com](https://ollama.com/) if you want to use local models instead of Claude.
 
 ## Installation
 
@@ -58,6 +60,31 @@ The app will guide you through:
 - `Enter` - Select/Continue
 - `b` - Go back to previous screen
 - `q` or `Ctrl+C` - Quit
+
+## Configuration
+
+By default, activitycat uses Claude for report generation. To switch providers or customize the model, create a config file at:
+
+```
+$HOME/.config/activitycat/config.toml
+```
+
+### Using Ollama
+
+```toml
+provider = "ollama"
+model = "llama3"
+ollama_host = "http://localhost:11434"
+```
+
+### Using Claude with a specific model
+
+```toml
+provider = "claude"
+model = "claude-sonnet-4-5-20250929"
+```
+
+All fields are optional — defaults are `provider = "claude"`, `model = "claude-sonnet-4-5-20250929"`, and `ollama_host = "http://localhost:11434"`.
 
 ## Custom Prompts
 
@@ -111,7 +138,7 @@ Use business-friendly language, avoid technical jargon.
 
 1. **Fetch PRs** - Uses `gh search prs --author "@me"` to get your PRs across all repositories
 2. **Display Activity** - Shows PR details including title, repository, state, dates, reviewers, and descriptions
-3. **Generate Report** - Sends PR data + your selected prompt to Claude API
+3. **Generate Report** - Sends PR data + your selected prompt to your configured LLM provider (Claude or Ollama)
 4. **Show Results** - Displays the AI-generated report in a scrollable view
 
 ## Development
@@ -131,7 +158,7 @@ activitycat/
 │   │   ├── report/                 # Report display
 │   │   └── styles/                 # Lipgloss styles
 │   ├── github/                      # GitHub CLI integration
-│   ├── claude/                      # Claude API integration
+│   ├── llm/                         # LLM provider integration (Claude, Ollama)
 │   ├── config/                      # Configuration management
 │   └── daterange/                   # Date range utilities
 └── README.md
@@ -164,4 +191,5 @@ Built with:
 - [Lipgloss](https://github.com/charmbracelet/lipgloss) - Style definitions
 - [Bubbles](https://github.com/charmbracelet/bubbles) - TUI components
 - [Anthropic SDK](https://github.com/anthropics/anthropic-sdk-go) - Claude AI integration
+- [Ollama](https://ollama.com/) - Local LLM support
 - [GitHub CLI](https://cli.github.com/) - GitHub API access
