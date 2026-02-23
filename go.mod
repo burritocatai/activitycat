@@ -3,6 +3,7 @@ module github.com/burritocatai/activitycat
 go 1.24.1
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/anthropics/anthropic-sdk-go v1.19.0
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10
