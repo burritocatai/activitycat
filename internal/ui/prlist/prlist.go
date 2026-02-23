@@ -7,31 +7,48 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/burritocatai/activitycat/internal/analytics"
 	"github.com/burritocatai/activitycat/internal/github"
 	"github.com/burritocatai/activitycat/internal/ui/styles"
 )
 
-// Model represents the PR list display screen
+// Model represents the activity list display screen
 type Model struct {
-	viewport viewport.Model
-	prs      []github.PullRequest
-	issues   []github.Issue
-	width    int
-	height   int
-	ready    bool
+	viewport       viewport.Model
+	prs            []github.PullRequest
+	issues         []github.Issue
+	reviews        []github.Review
+	commits        []github.Commit
+	commentedItems []github.CommentedItem
+	metrics        *analytics.Metrics
+	width          int
+	height         int
+	ready          bool
 }
 
-// New creates a new PR list model
-func New(prs []github.PullRequest, issues []github.Issue, width, height int) Model {
+// New creates a new activity list model
+func New(
+	prs []github.PullRequest,
+	issues []github.Issue,
+	reviews []github.Review,
+	commits []github.Commit,
+	commentedItems []github.CommentedItem,
+	metrics *analytics.Metrics,
+	width, height int,
+) Model {
 	m := Model{
-		prs:    prs,
-		issues: issues,
-		width:  width,
-		height: height,
-		ready:  false,
+		prs:            prs,
+		issues:         issues,
+		reviews:        reviews,
+		commits:        commits,
+		commentedItems: commentedItems,
+		metrics:        metrics,
+		width:          width,
+		height:         height,
+		ready:          false,
 	}
 
-	// Initialize viewport immediately if dimensions are provided
 	if width > 0 && height > 0 {
 		m.viewport = viewport.New(width, height-5)
 		m.viewport.SetContent(m.renderContent())
@@ -41,12 +58,12 @@ func New(prs []github.PullRequest, issues []github.Issue, width, height int) Mod
 	return m
 }
 
-// Init initializes the PR list model
+// Init initializes the model
 func (m Model) Init() tea.Cmd {
 	return nil
 }
 
-// Update handles messages for the PR list screen
+// Update handles messages
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 
@@ -84,13 +101,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	return m, cmd
 }
 
-// View renders the PR list screen
+// View renders the screen
 func (m Model) View() string {
 	if !m.ready {
 		return "\n  Initializing..."
 	}
 
-	header := styles.TitleStyle.Render(fmt.Sprintf("Found %d Pull Requests and %d Closed Issues", len(m.prs), len(m.issues)))
+	header := styles.TitleStyle.Render(fmt.Sprintf(
+		"Activity: %d PRs, %d Issues, %d Reviews, %d Commits",
+		len(m.prs), len(m.issues), len(m.reviews), len(m.commits),
+	))
 	footer := styles.FooterStyle.Render("↑/↓: Scroll • Enter: Continue • b: Back • q: Quit")
 
 	return lipgloss.JoinVertical(
@@ -101,33 +121,86 @@ func (m Model) View() string {
 	)
 }
 
-// renderContent formats all PRs and issues for display
+// renderContent formats all activity for display
 func (m Model) renderContent() string {
-	if len(m.prs) == 0 && len(m.issues) == 0 {
-		return styles.SubtleStyle.Render("No pull requests or closed issues found in this date range.")
+	if len(m.prs) == 0 && len(m.issues) == 0 && len(m.reviews) == 0 &&
+		len(m.commits) == 0 && len(m.commentedItems) == 0 {
+		return styles.SubtleStyle.Render("No activity found in this date range.")
 	}
 
 	var content strings.Builder
 
-	// Display PRs first
+	// 1. Analytics summary box
+	if m.metrics != nil {
+		content.WriteString(styles.MetricsBoxStyle.Render(m.metrics.Format()))
+		content.WriteString("\n\n")
+	}
+
+	// 2. Repo breakdown table
+	if m.metrics != nil && len(m.metrics.RepoStats) > 0 {
+		content.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")).Render("Repository Breakdown"))
+		content.WriteString("\n\n")
+		for _, rs := range m.metrics.RepoStats {
+			line := fmt.Sprintf("  %-40s  PRs:%-3d  Issues:%-3d  Reviews:%-3d  Commits:%-3d  Comments:%-3d",
+				rs.Repo, rs.PRs, rs.Issues, rs.Reviews, rs.Commits, rs.CommentedItems)
+			content.WriteString(styles.SubtleStyle.Render(line))
+			content.WriteString("\n")
+		}
+		content.WriteString("\n")
+	}
+
+	// 3. Pull Requests
 	if len(m.prs) > 0 {
 		content.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4")).Render("Pull Requests"))
 		content.WriteString("\n\n")
 		for _, pr := range m.prs {
-			content.WriteString(m.formatPR(pr))
+			content.WriteString(formatPR(pr))
 			content.WriteString("\n")
 		}
 	}
 
-	// Display issues after PRs
+	// 4. Closed Issues
 	if len(m.issues) > 0 {
-		if len(m.prs) > 0 {
+		if content.Len() > 0 {
 			content.WriteString("\n")
 		}
 		content.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2")).Render("Closed Issues"))
 		content.WriteString("\n\n")
 		for _, issue := range m.issues {
-			content.WriteString(m.formatIssue(issue))
+			content.WriteString(formatIssue(issue))
+			content.WriteString("\n")
+		}
+	}
+
+	// 5. Code Reviews Given
+	if len(m.reviews) > 0 {
+		content.WriteString("\n")
+		content.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("135")).Render("Code Reviews Given"))
+		content.WriteString("\n\n")
+		for _, r := range m.reviews {
+			content.WriteString(formatReview(r))
+			content.WriteString("\n")
+		}
+	}
+
+	// 6. Commits
+	if len(m.commits) > 0 {
+		content.WriteString("\n")
+		content.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("208")).Render("Commits"))
+		content.WriteString("\n\n")
+		for _, c := range m.commits {
+			content.WriteString(formatCommit(c))
+			content.WriteString("\n")
+		}
+	}
+
+	// 7. Commented Items
+	if len(m.commentedItems) > 0 {
+		content.WriteString("\n")
+		content.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("241")).Render("Commented Items"))
+		content.WriteString("\n\n")
+		for _, ci := range m.commentedItems {
+			content.WriteString(formatCommentedItem(ci))
 			content.WriteString("\n")
 		}
 	}
@@ -135,9 +208,7 @@ func (m Model) renderContent() string {
 	return content.String()
 }
 
-// formatPR formats a single PR as a card
-func (m Model) formatPR(pr github.PullRequest) string {
-	// Title with state color
+func formatPR(pr github.PullRequest) string {
 	var stateStyle lipgloss.Style
 	var stateLabel string
 
@@ -154,39 +225,31 @@ func (m Model) formatPR(pr github.PullRequest) string {
 
 	title := lipgloss.NewStyle().Bold(true).Render(pr.Title)
 	state := stateStyle.Render(fmt.Sprintf("[%s]", stateLabel))
-
-	// Repository and author
 	repo := styles.SubtleStyle.Render(pr.Repository.NameWithOwner)
 	author := styles.SubtleStyle.Render(fmt.Sprintf("@%s", pr.Author.Login))
 
-	// Dates
 	dates := fmt.Sprintf("Created: %s", pr.CreatedAt.Format("2006-01-02"))
-	if pr.MergedAt != nil {
-		dates += fmt.Sprintf(" • Merged: %s", pr.MergedAt.Format("2006-01-02"))
+	if mt := pr.MergeTime(); mt != nil {
+		dates += fmt.Sprintf(" • Merged: %s", mt.Format("2006-01-02"))
 	} else if pr.ClosedAt != nil {
 		dates += fmt.Sprintf(" • Closed: %s", pr.ClosedAt.Format("2006-01-02"))
 	}
 
-	// Reviewers
 	reviewers := ""
 	if len(pr.ReviewRequests) > 0 {
-		reviewerLogins := pr.Reviewers()
-		reviewers = fmt.Sprintf("Reviewers: %s", strings.Join(reviewerLogins, ", "))
+		reviewers = fmt.Sprintf("Reviewers: %s", strings.Join(pr.Reviewers(), ", "))
 	}
 
-	// Body (truncated)
 	body := ""
 	if pr.Body != "" {
 		truncated := pr.Body
 		if len(truncated) > 200 {
 			truncated = truncated[:200] + "..."
 		}
-		// Remove newlines for compact display
 		truncated = strings.ReplaceAll(truncated, "\n", " ")
 		body = styles.SubtleStyle.Render(truncated)
 	}
 
-	// Build card content
 	var card strings.Builder
 	card.WriteString(fmt.Sprintf("%s %s\n", title, state))
 	card.WriteString(fmt.Sprintf("%s • %s\n", repo, author))
@@ -201,9 +264,7 @@ func (m Model) formatPR(pr github.PullRequest) string {
 	return styles.PRCardStyle.Render(card.String())
 }
 
-// formatIssue formats a single issue as a card
-func (m Model) formatIssue(issue github.Issue) string {
-	// Title with state color
+func formatIssue(issue github.Issue) string {
 	var stateStyle lipgloss.Style
 	var stateLabel string
 
@@ -217,30 +278,24 @@ func (m Model) formatIssue(issue github.Issue) string {
 
 	title := lipgloss.NewStyle().Bold(true).Render(issue.Title)
 	state := stateStyle.Render(fmt.Sprintf("[%s]", stateLabel))
-
-	// Repository and author
 	repo := styles.SubtleStyle.Render(issue.Repository.NameWithOwner)
 	author := styles.SubtleStyle.Render(fmt.Sprintf("@%s", issue.Author.Login))
 
-	// Dates
 	dates := fmt.Sprintf("Created: %s", issue.CreatedAt.Format("2006-01-02"))
 	if issue.ClosedAt != nil {
 		dates += fmt.Sprintf(" • Closed: %s", issue.ClosedAt.Format("2006-01-02"))
 	}
 
-	// Body (truncated)
 	body := ""
 	if issue.Body != "" {
 		truncated := issue.Body
 		if len(truncated) > 200 {
 			truncated = truncated[:200] + "..."
 		}
-		// Remove newlines for compact display
 		truncated = strings.ReplaceAll(truncated, "\n", " ")
 		body = styles.SubtleStyle.Render(truncated)
 	}
 
-	// Build card content
 	var card strings.Builder
 	card.WriteString(fmt.Sprintf("%s %s\n", title, state))
 	card.WriteString(fmt.Sprintf("%s • %s\n", repo, author))
@@ -250,6 +305,48 @@ func (m Model) formatIssue(issue github.Issue) string {
 	}
 
 	return styles.PRCardStyle.Render(card.String())
+}
+
+func formatReview(r github.Review) string {
+	state := styles.ReviewStyle.Render(fmt.Sprintf("[%s]", strings.ToUpper(r.State)))
+	title := lipgloss.NewStyle().Bold(true).Render(r.Title)
+	repo := styles.SubtleStyle.Render(r.Repository.NameWithOwner)
+	author := styles.SubtleStyle.Render(fmt.Sprintf("by @%s", r.Author.Login))
+	date := r.CreatedAt.Format("2006-01-02")
+
+	var card strings.Builder
+	card.WriteString(fmt.Sprintf("%s %s\n", title, state))
+	card.WriteString(fmt.Sprintf("%s • %s • %s\n", repo, author, date))
+
+	return styles.PRCardStyle.Render(card.String())
+}
+
+func formatCommit(c github.Commit) string {
+	sha := styles.CommitStyle.Render(c.SHA[:min(7, len(c.SHA))])
+	msg := c.Commit.Message
+	if idx := strings.Index(msg, "\n"); idx != -1 {
+		msg = msg[:idx]
+	}
+	if len(msg) > 80 {
+		msg = msg[:80] + "..."
+	}
+	repo := styles.SubtleStyle.Render(c.Repository.FullName)
+	date := styles.SubtleStyle.Render(c.Commit.Author.Date.Format("2006-01-02"))
+
+	return fmt.Sprintf("  %s %s  %s  %s", sha, msg, repo, date)
+}
+
+func formatCommentedItem(ci github.CommentedItem) string {
+	kind := "Issue"
+	if ci.IsPR {
+		kind = "PR"
+	}
+	kindLabel := styles.SubtleStyle.Render(fmt.Sprintf("[%s]", kind))
+	title := ci.Title
+	repo := styles.SubtleStyle.Render(ci.Repository.NameWithOwner)
+	comments := styles.SubtleStyle.Render(fmt.Sprintf("%d comments", ci.Comments))
+
+	return fmt.Sprintf("  %s %s  %s  %s", kindLabel, title, repo, comments)
 }
 
 // SetSize updates the dimensions

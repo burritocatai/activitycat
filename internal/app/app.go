@@ -2,6 +2,8 @@ package app
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/burritocatai/activitycat/internal/analytics"
 	"github.com/burritocatai/activitycat/internal/claude"
 	"github.com/burritocatai/activitycat/internal/config"
 	"github.com/burritocatai/activitycat/internal/daterange"
@@ -29,8 +31,8 @@ const (
 
 // Model is the main application model
 type Model struct {
-	state State
-	width int
+	state  State
+	width  int
 	height int
 
 	// Sub-models for each screen
@@ -44,6 +46,10 @@ type Model struct {
 	selectedRange   daterange.Range
 	prs             []github.PullRequest
 	issues          []github.Issue
+	reviews         []github.Review
+	commits         []github.Commit
+	commentedItems  []github.CommentedItem
+	metrics         *analytics.Metrics
 	prompts         []config.Prompt
 	selectedPrompt  config.Prompt
 	generatedReport string
@@ -52,7 +58,6 @@ type Model struct {
 
 // New creates a new application model
 func New() Model {
-	// Load prompts early
 	prompts, _ := config.LoadPrompts()
 
 	return Model{
@@ -74,7 +79,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-		// Update sub-models with new size
 		if m.state == StatePRList {
 			m.prList.SetSize(msg.Width, msg.Height)
 		}
@@ -83,23 +87,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
-		// Global quit
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
 
 	case dateselect.DateSelectedMsg:
-		// Transition from date selection to loading
 		m.selectedRange = msg.Range
-		m.loading = loading.New("Fetching pull requests and closed issues...")
+		m.loading = loading.New("Fetching activity data (PRs, issues, reviews, commits, comments)...")
 		m.state = StateLoading
 		return m, tea.Batch(
 			m.loading.Init(),
-			github.FetchPRsCmd(m.selectedRange),
+			github.FetchActivityCmd(m.selectedRange),
 		)
 
-	case github.PRsLoadedMsg:
-		// Transition from loading to PR list or error
+	case github.ActivityLoadedMsg:
 		if msg.Error != nil {
 			m.err = msg.Error
 			m.state = StateError
@@ -107,38 +108,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.prs = msg.PRs
 		m.issues = msg.Issues
-		m.prList = prlist.New(m.prs, m.issues, m.width, m.height)
+		m.reviews = msg.Reviews
+		m.commits = msg.Commits
+		m.commentedItems = msg.CommentedItems
+		m.metrics = analytics.Compute(m.prs, m.issues, m.reviews, m.commits, m.commentedItems, m.selectedRange)
+		m.prList = prlist.New(m.prs, m.issues, m.reviews, m.commits, m.commentedItems, m.metrics, m.width, m.height)
 		m.state = StatePRList
 		return m, nil
 
 	case prlist.ContinueMsg:
-		// Transition from PR list to prompt selection
 		m.promptSelect = promptselect.New(m.prompts)
 		m.state = StatePromptSelect
 		return m, nil
 
 	case prlist.BackMsg:
-		// Go back to date selection from PR list
 		m.state = StateSelectDate
 		return m, nil
 
 	case promptselect.PromptSelectedMsg:
-		// Transition from prompt selection to generating
 		m.selectedPrompt = msg.Prompt
 		m.loading = loading.New("Generating report with Claude AI...")
 		m.state = StateGenerating
 		return m, tea.Batch(
 			m.loading.Init(),
-			claude.GenerateReportCmd(m.prs, m.issues, m.selectedPrompt.Content),
+			claude.GenerateReportCmd(m.prs, m.issues, m.reviews, m.commits, m.commentedItems, m.metrics, m.selectedPrompt.Content),
 		)
 
 	case promptselect.BackMsg:
-		// Go back to PR list from prompt selection
 		m.state = StatePRList
 		return m, nil
 
 	case claude.ReportGeneratedMsg:
-		// Transition from generating to report view or error
 		if msg.Error != nil {
 			m.err = msg.Error
 			m.state = StateError
@@ -150,12 +150,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case report.BackMsg:
-		// Go back to prompt selection from report
 		m.state = StatePromptSelect
 		return m, nil
 	}
 
-	// Delegate to current state's model
 	return m.updateCurrentState(msg)
 }
 
@@ -175,7 +173,6 @@ func (m Model) updateCurrentState(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case StateReport:
 		m.reportView, cmd = m.reportView.Update(msg)
 	case StateError:
-		// In error state, any key returns to date selection
 		if _, ok := msg.(tea.KeyMsg); ok {
 			m.state = StateSelectDate
 			m.err = nil
