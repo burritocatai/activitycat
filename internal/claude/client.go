@@ -6,7 +6,9 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/burritocatai/activitycat/internal/analytics"
 	"github.com/burritocatai/activitycat/internal/github"
 )
 
@@ -19,23 +21,32 @@ func CheckAPIKey() error {
 	return nil
 }
 
-// GenerateReport calls the Claude API to generate a report from PR and issue data
-func GenerateReport(ctx context.Context, prs []github.PullRequest, issues []github.Issue, prompt string) (string, error) {
-	// Check for API key
+// GenerateReport calls the Claude API to generate a report from all activity data
+func GenerateReport(
+	ctx context.Context,
+	prs []github.PullRequest,
+	issues []github.Issue,
+	reviews []github.Review,
+	commits []github.Commit,
+	commentedItems []github.CommentedItem,
+	metrics *analytics.Metrics,
+	prompt string,
+) (string, error) {
 	if err := CheckAPIKey(); err != nil {
 		return "", err
 	}
 
-	// Create client (will automatically use ANTHROPIC_API_KEY from environment)
 	client := anthropic.NewClient()
 
-	// Format PR and issue data
-	activityData := github.FormatActivityForClaude(prs, issues)
+	// Format all activity data including metrics
+	metricsText := ""
+	if metrics != nil {
+		metricsText = metrics.Format()
+	}
+	activityData := github.FormatActivityForClaude(prs, issues, reviews, commits, commentedItems, metricsText)
 
-	// Build the message
 	userMessage := fmt.Sprintf("%s\n\nHere is my GitHub activity data:\n\n%s", prompt, activityData)
 
-	// Call the API
 	message, err := client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaudeSonnet4_5_20250929,
 		MaxTokens: 4096,
@@ -48,21 +59,26 @@ func GenerateReport(ctx context.Context, prs []github.PullRequest, issues []gith
 		return "", fmt.Errorf("Claude API error: %w", err)
 	}
 
-	// Extract text content from response
 	if len(message.Content) == 0 {
 		return "", fmt.Errorf("no content in Claude API response")
 	}
 
-	// Get the text from the first content block
-	// The Content field is a slice of ContentBlockUnion which has a Text field
 	contentBlock := message.Content[0]
 	return contentBlock.Text, nil
 }
 
 // GenerateReportCmd wraps GenerateReport in a Bubbletea Cmd
-func GenerateReportCmd(prs []github.PullRequest, issues []github.Issue, prompt string) tea.Cmd {
+func GenerateReportCmd(
+	prs []github.PullRequest,
+	issues []github.Issue,
+	reviews []github.Review,
+	commits []github.Commit,
+	commentedItems []github.CommentedItem,
+	metrics *analytics.Metrics,
+	prompt string,
+) tea.Cmd {
 	return func() tea.Msg {
-		report, err := GenerateReport(context.Background(), prs, issues, prompt)
+		report, err := GenerateReport(context.Background(), prs, issues, reviews, commits, commentedItems, metrics, prompt)
 		return ReportGeneratedMsg{
 			Report: report,
 			Error:  err,

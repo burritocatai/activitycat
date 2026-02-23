@@ -60,4 +60,21 @@ var (
 	// ReportStyle is used for the generated report
 	ReportStyle = lipgloss.NewStyle().
 			Padding(1, 2)
+
+	// MetricsBoxStyle is used for the analytics summary box
+	MetricsBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.DoubleBorder()).
+			BorderForeground(lipgloss.Color("205")).
+			Padding(1, 2).
+			MarginBottom(1)
+
+	// ReviewStyle is used for review badges
+	ReviewStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("135")). // Purple
+			Bold(true)
+
+	// CommitStyle is used for commit badges
+	CommitStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("208")). // Orange
+			Bold(true)
 )
