@@ -4,10 +4,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/burritocatai/activitycat/internal/analytics"
-	"github.com/burritocatai/activitycat/internal/claude"
 	"github.com/burritocatai/activitycat/internal/config"
 	"github.com/burritocatai/activitycat/internal/daterange"
 	"github.com/burritocatai/activitycat/internal/github"
+	"github.com/burritocatai/activitycat/internal/llm"
 	"github.com/burritocatai/activitycat/internal/ui/dateselect"
 	"github.com/burritocatai/activitycat/internal/ui/loading"
 	"github.com/burritocatai/activitycat/internal/ui/prlist"
@@ -42,6 +42,10 @@ type Model struct {
 	promptSelect promptselect.Model
 	reportView   report.Model
 
+	// LLM provider
+	llmProvider  llm.Provider
+	providerName string
+
 	// Shared data
 	selectedRange   daterange.Range
 	prs             []github.PullRequest
@@ -57,13 +61,16 @@ type Model struct {
 }
 
 // New creates a new application model
-func New() Model {
+func New(cfg config.Config) Model {
 	prompts, _ := config.LoadPrompts()
+	provider, _ := llm.NewProvider(cfg)
 
 	return Model{
-		state:      StateSelectDate,
-		dateSelect: dateselect.New(),
-		prompts:    prompts,
+		state:        StateSelectDate,
+		dateSelect:   dateselect.New(),
+		prompts:      prompts,
+		llmProvider:  provider,
+		providerName: cfg.Provider,
 	}
 }
 
@@ -127,18 +134,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case promptselect.PromptSelectedMsg:
 		m.selectedPrompt = msg.Prompt
-		m.loading = loading.New("Generating report with Claude AI...")
+		loadingMsg := "Generating report with Claude AI..."
+		if m.providerName == "ollama" {
+			loadingMsg = "Generating report with Ollama..."
+		}
+		m.loading = loading.New(loadingMsg)
 		m.state = StateGenerating
 		return m, tea.Batch(
 			m.loading.Init(),
-			claude.GenerateReportCmd(m.prs, m.issues, m.reviews, m.commits, m.commentedItems, m.metrics, m.selectedPrompt.Content),
+			llm.GenerateReportCmd(m.llmProvider, m.prs, m.issues, m.reviews, m.commits, m.commentedItems, m.metrics, m.selectedPrompt.Content),
 		)
 
 	case promptselect.BackMsg:
 		m.state = StatePRList
 		return m, nil
 
-	case claude.ReportGeneratedMsg:
+	case llm.ReportGeneratedMsg:
 		if msg.Error != nil {
 			m.err = msg.Error
 			m.state = StateError

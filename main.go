@@ -6,8 +6,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/burritocatai/activitycat/internal/app"
-	"github.com/burritocatai/activitycat/internal/claude"
+	"github.com/burritocatai/activitycat/internal/config"
 	"github.com/burritocatai/activitycat/internal/github"
+	"github.com/burritocatai/activitycat/internal/llm"
 )
 
 func main() {
@@ -20,17 +21,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := claude.CheckAPIKey(); err != nil {
-		fmt.Fprintf(os.Stderr, "Claude API error: %v\n", err)
-		fmt.Fprintf(os.Stderr, "\nPlease set your Anthropic API key:\n")
-		fmt.Fprintf(os.Stderr, "  export ANTHROPIC_API_KEY=your_key_here\n")
-		fmt.Fprintf(os.Stderr, "\nGet your API key at: https://console.anthropic.com/\n")
-		os.Exit(1)
+	cfg := config.LoadConfig()
+
+	if cfg.Provider == "claude" {
+		if err := llm.CheckAPIKey(); err != nil {
+			fmt.Fprintf(os.Stderr, "Claude API error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "\nPlease set your Anthropic API key:\n")
+			fmt.Fprintf(os.Stderr, "  export ANTHROPIC_API_KEY=your_key_here\n")
+			fmt.Fprintf(os.Stderr, "\nGet your API key at: https://console.anthropic.com/\n")
+			os.Exit(1)
+		}
 	}
 
 	// Start the TUI application
 	p := tea.NewProgram(
-		app.New(),
+		app.New(cfg),
 		tea.WithAltScreen(),
 	)
 
