@@ -9,9 +9,11 @@ import (
 
 // Config holds application configuration for LLM provider selection
 type Config struct {
-	Provider   string `toml:"provider"`
-	Model      string `toml:"model"`
-	OllamaHost string `toml:"ollama_host"`
+	Provider     string `toml:"provider"`
+	Model        string `toml:"model"`
+	OllamaHost   string `toml:"ollama_host"`
+	OpenAIBaseURL string `toml:"openai_base_url"`
+	OpenAIAPIKey  string `toml:"openai_api_key"`
 }
 
 // LoadConfig reads configuration from ~/.config/activitycat/config.toml.

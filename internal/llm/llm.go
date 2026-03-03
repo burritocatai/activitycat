@@ -29,8 +29,10 @@ func NewProvider(cfg config.Config) (Provider, error) {
 		return NewClaudeProvider(cfg.Model), nil
 	case "ollama":
 		return NewOllamaProvider(cfg.OllamaHost, cfg.Model), nil
+	case "openai":
+		return NewOpenAIProvider(cfg.OpenAIBaseURL, cfg.OpenAIAPIKey, cfg.Model), nil
 	default:
-		return nil, fmt.Errorf("unknown LLM provider: %q (expected \"claude\" or \"ollama\")", cfg.Provider)
+		return nil, fmt.Errorf("unknown LLM provider: %q (expected \"claude\", \"ollama\", or \"openai\")", cfg.Provider)
 	}
 }
 
