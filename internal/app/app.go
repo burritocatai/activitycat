@@ -134,10 +134,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case promptselect.PromptSelectedMsg:
 		m.selectedPrompt = msg.Prompt
-		loadingMsg := "Generating report with Claude AI..."
-		if m.providerName == "ollama" {
-			loadingMsg = "Generating report with Ollama..."
+		providerLabels := map[string]string{
+			"claude": "Claude AI",
+			"ollama": "Ollama",
+			"openai": "OpenAI",
 		}
+		label, ok := providerLabels[m.providerName]
+		if !ok {
+			label = m.providerName
+		}
+		loadingMsg := "Generating report with " + label + "..."
 		m.loading = loading.New(loadingMsg)
 		m.state = StateGenerating
 		return m, tea.Batch(
